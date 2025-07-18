@@ -1,0 +1,15 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application
+        android:label="AMLyricBlur"
+        android:allowBackup="false">
+        <meta-data
+            android:name="xposedmodule"
+            android:value="true"/>
+        <meta-data
+            android:name="xposeddescription"
+            android:value="Apple Music 歌词逐行模糊"/>
+        <meta-data
+            android:name="xposedminversion"
+            android:value="82"/>
+    </application>
+</manifest>
