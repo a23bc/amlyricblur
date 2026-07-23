@@ -20,7 +20,7 @@ import java.util.WeakHashMap
 class HookEntry : IXposedHookLoadPackage {
 
     companion object {
-        private const val TAG = "LyricsBlurDemo"
+        private const val TAG = "AMLyricBlur"
         private const val PKG = "com.apple.android.music"
         private const val BLUR_BASE = 12f
         private const val BLUR_STEP = 4f
@@ -92,7 +92,7 @@ class HookEntry : IXposedHookLoadPackage {
                     Log.i(TAG, "onCreateView hooked")
                     try {
                         Handler(Looper.getMainLooper()).post {
-                            Toast.makeText(result.context, "LyricsBlur: Hook OK!", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(result.context, "AMLyricBlur: Hook OK!", Toast.LENGTH_SHORT).show()
                         }
                     } catch (_: Throwable) {}
                     Handler(Looper.getMainLooper()).postDelayed({ findRecyclerView(result) }, 500)
@@ -159,7 +159,7 @@ class HookEntry : IXposedHookLoadPackage {
                 Log.i(TAG, "RV FOUND")
                 try {
                     Handler(Looper.getMainLooper()).post {
-                        Toast.makeText(view.context, "LyricsBlur: RV found!", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(view.context, "AMLyricBlur: RV found!", Toast.LENGTH_SHORT).show()
                     }
                 } catch (_: Throwable) {}
             } else {
