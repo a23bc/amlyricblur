@@ -9,7 +9,7 @@ import android.util.Log
 import android.view.View
 import android.view.ViewGroup
 import android.widget.ImageView
-import android.widget.Toast
+
 import de.robv.android.xposed.IXposedHookLoadPackage
 import de.robv.android.xposed.XC_MethodHook
 import de.robv.android.xposed.XposedBridge
@@ -90,11 +90,6 @@ class HookEntry : IXposedHookLoadPackage {
                     val result = param.result as? View ?: return
                     lyricsRootView = result
                     Log.i(TAG, "onCreateView hooked")
-                    try {
-                        Handler(Looper.getMainLooper()).post {
-                            Toast.makeText(result.context, "AMLyricBlur: Hook OK!", Toast.LENGTH_SHORT).show()
-                        }
-                    } catch (_: Throwable) {}
                     Handler(Looper.getMainLooper()).postDelayed({ findRecyclerView(result) }, 500)
                 }
             })
@@ -157,11 +152,7 @@ class HookEntry : IXposedHookLoadPackage {
             if (rv != null) {
                 recyclerView = rv
                 Log.i(TAG, "RV FOUND")
-                try {
-                    Handler(Looper.getMainLooper()).post {
-                        Toast.makeText(view.context, "AMLyricBlur: RV found!", Toast.LENGTH_SHORT).show()
-                    }
-                } catch (_: Throwable) {}
+
             } else {
                 Handler(Looper.getMainLooper()).postDelayed({ findRecyclerView(view) }, 1000)
             }
