@@ -270,7 +270,7 @@ class HookEntry : IXposedHookLoadPackage {
             } catch (t: Throwable) { Log.e(TAG, "Blur failed", t) }
         }
         pendingBlurRunnable = r
-        scrollHandler.postDelayed(r, 200)
+        scrollHandler.post(r)
     }
 
     private fun attachScrollListener(rv: Any) {
