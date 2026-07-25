@@ -10,7 +10,7 @@ Apple Music 歌词逐行模糊 Xposed 模块。对当前高亮歌词行以外的
   - 下一行：blur=12
   - 再下一行：blur=16
   - 三行及以后：blur=20
-- 自动跳过等待动画（跳动的圆点指示器）
+- 等待球阶段自动模糊：歌曲开头等待动画出现时，所有歌词行即刻施加模糊
 - 双行高亮支持（同时高亮多行时均不模糊）
 - 滑动歌词时自动解除模糊，方便阅读非高亮行歌词
 - 高亮行不在可视区域时自动清除模糊，避免无意义的模糊效果
@@ -34,7 +34,7 @@ Apple Music 歌词逐行模糊 Xposed 模块。对当前高亮歌词行以外的
 
 模块通过两种方式获取当前高亮歌词行：
 
-1. **DexFile 扫描（主要）**：运行时扫描 Apple Music APK 的 DEX 文件，查找接收 `LyricsLineVector` 参数的方法。该方法回调提供完整的高亮行列表，能准确支持双行/多行高亮场景。
+1. **DexFile 扫描（主要）**：运行时扫描 Apple Music APK 的 DEX 文件，查找接收 `LyricsLineVector` 参数的方法。该方法回调提供完整的高亮行列表，能准确支持双行/多行高亮场景。扫描通过 `dalvik.system.DexFile` API 直接完成，无需额外依赖。
 2. **ViewModel Hook（后备）**：当 DexFile 扫描未安装时，通过 Hook `PlayerLyricsViewModel` 的 `setCurrentHighlightedLine(I)V` 获取单行高亮。
 
 此外还 Hook 了 `notifyWordHighlight(IIIZ)V` 以支持逐字歌词的高亮累加。
@@ -76,13 +76,11 @@ app/src/main/java/com/example/amlyricblur/
 ## 依赖
 
 - `de.robv.android.xposed:api:82` — Xposed Framework API
-- `org.luckypray:dexkit:2.0.3` — DexKit 库（预留，运行时通过 `dalvik.system.DexFile` 进行 APK 扫描）
 
 ## 已知问题
 
 - 模糊通过 `View.setRenderEffect` 实现，依赖 Android 12+ 的 RenderEffect API
 - `getChildAdapterPosition(View)` 在 6.5.0 中已移除，改用 `RecyclerView.M(View)` 静态方法获取 adapter position
-- 歌曲开头等待球（bouncing ball）阶段的歌词模糊效果可能不完全，因为该阶段高亮回调尚未触发
 
 ## License
 
