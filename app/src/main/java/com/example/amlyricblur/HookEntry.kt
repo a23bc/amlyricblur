@@ -50,6 +50,7 @@ class HookEntry : IXposedHookLoadPackage {
 
     override fun handleLoadPackage(lpparam: XC_LoadPackage.LoadPackageParam) {
         if (lpparam.packageName != PKG) return
+        Log.i(TAG, "=== handleLoadPackage: ${lpparam.packageName} ===")
         apkSourceDir = lpparam.appInfo.sourceDir
         initReflectionCache(lpparam.classLoader)
         hookLyricsFragment(lpparam.classLoader)
@@ -77,7 +78,7 @@ class HookEntry : IXposedHookLoadPackage {
             createBlurEffectMethod = Class.forName("android.graphics.RenderEffect")
                 .getMethod("createBlurEffect", Float::class.javaPrimitiveType,
                     Float::class.javaPrimitiveType, Shader.TileMode::class.java)
-            Log.i(TAG, "Reflection OK")
+            Log.i(TAG, "Reflection OK, adapterPos method=${getAdapterPositionFromView?.name}")
         } catch (t: Throwable) {
             Log.e(TAG, "Reflection failed", t)
         }
@@ -153,6 +154,7 @@ class HookEntry : IXposedHookLoadPackage {
             })
             highlightHookInstalled = true
             Log.i(TAG, "Highlight hook installed on ${method.name}")
+            scheduleBlurUpdate()
         } catch (t: Throwable) {
             Log.e(TAG, "installHighlightHook failed", t)
         }
@@ -160,20 +162,16 @@ class HookEntry : IXposedHookLoadPackage {
 
     private fun hookLyricsFragment(cl: ClassLoader) {
         try {
-            val cls = cl.loadClass(
-                "com.apple.android.music.player.fragment.PlayerLyricsViewFragment"
-            )
+            val cls = cl.loadClass("com.apple.android.music.player.fragment.PlayerLyricsViewFragment")
             XposedBridge.hookAllMethods(cls, "onCreateView", object : XC_MethodHook() {
                 override fun afterHookedMethod(param: MethodHookParam) {
                     val result = param.result as? View ?: return
                     lyricsRootView = result
-                    Log.i(TAG, "onCreateView hooked")
-                    Handler(Looper.getMainLooper()).postDelayed({
-                        findRecyclerView(result)
-                        hookHighlightCallback(cl)
-                    }, 500)
+                    Log.i(TAG, "onCreateView hooked, root=${result.javaClass.name}")
+                    Handler(Looper.getMainLooper()).postDelayed({ findRecyclerView(result) }, 500)
                 }
             })
+            Log.i(TAG, "Fragment hook installed")
         } catch (t: Throwable) {
             Log.w(TAG, "Fragment hook failed: ${t.message}")
         }
@@ -184,16 +182,17 @@ class HookEntry : IXposedHookLoadPackage {
             val vmClass = cl.loadClass(
                 "com.apple.android.music.player.viewmodel.PlayerLyricsViewModel"
             )
-            Log.i(TAG, "Found VM")
+            Log.i(TAG, "Found VM: ${vmClass.name}")
 
             for (m in vmClass.declaredMethods) {
                 val p = m.parameterTypes
                 if (p.size == 4 && p[0] == Int::class.javaPrimitiveType && p[3] == Boolean::class.javaPrimitiveType) {
-                    Log.i(TAG, "Hooking: ${m.name}(IIIZ)")
+                    Log.i(TAG, "Hooking IIIZ: ${m.name}")
                     XposedBridge.hookMethod(m, object : XC_MethodHook() {
                         override fun beforeHookedMethod(param: MethodHookParam) {
                             val lineId = param.args[0] as Int
                             val isBg = param.args[3] as Boolean
+                            Log.d(TAG, "IIIZ fired: lineId=$lineId isBg=$isBg")
                             if (!isBg && lineId > 0) {
                                 synchronized(highlightedLineIds) {
                                     highlightedLineIds.add(lineId)
@@ -208,11 +207,12 @@ class HookEntry : IXposedHookLoadPackage {
             for (m in vmClass.declaredMethods) {
                 val p = m.parameterTypes
                 if (p.size == 1 && p[0] == Int::class.javaPrimitiveType && m.returnType == Void.TYPE) {
-                    Log.i(TAG, "Hooking: ${m.name}(I)")
+                    Log.i(TAG, "Hooking I: ${m.name}")
                     XposedBridge.hookMethod(m, object : XC_MethodHook() {
                         override fun beforeHookedMethod(param: MethodHookParam) {
                             val lineId = param.args[0] as Int
                             if (lineId < 0) return
+                            Log.d(TAG, "I fired: lineId=$lineId installed=$highlightHookInstalled")
                             if (!highlightHookInstalled) {
                                 synchronized(highlightedLineIds) {
                                     previousHighlightIds = highlightedLineIds.toSet()
@@ -231,14 +231,18 @@ class HookEntry : IXposedHookLoadPackage {
     }
 
     private fun findRecyclerView(view: View) {
-        if (recyclerView != null) return
+        if (recyclerView != null) {
+            Log.d(TAG, "findRecyclerView: already found")
+            return
+        }
         try {
             val rv = findRVInHierarchy(view)
             if (rv != null) {
                 recyclerView = rv
-                Log.i(TAG, "RV FOUND")
+                Log.i(TAG, "RV FOUND: ${rv.javaClass.name}")
                 attachScrollListener(rv)
             } else {
+                Log.d(TAG, "RV not found, retrying in 1s")
                 Handler(Looper.getMainLooper()).postDelayed({ findRecyclerView(view) }, 1000)
             }
         } catch (t: Throwable) {
@@ -260,7 +264,10 @@ class HookEntry : IXposedHookLoadPackage {
     private fun scheduleBlurUpdate() {
         pendingBlurRunnable?.let { scrollHandler.removeCallbacks(it) }
         val r = Runnable {
-            try { applyBlur() } catch (t: Throwable) { Log.e(TAG, "Blur failed", t) }
+            try {
+                Log.d(TAG, "Scheduled blur runnable firing")
+                applyBlur()
+            } catch (t: Throwable) { Log.e(TAG, "Blur failed", t) }
         }
         pendingBlurRunnable = r
         scrollHandler.postDelayed(r, 200)
@@ -290,6 +297,7 @@ class HookEntry : IXposedHookLoadPackage {
         val gcm = getChildCountMethod ?: return
         val gca = getChildAtMethod ?: return
         val childCount = gcm.invoke(rv) as Int
+        Log.i(TAG, "clearAllBlur: childCount=$childCount")
         for (i in 0 until childCount) {
             val child = gca.invoke(rv, i) as? View ?: continue
             if (!isLyricsLine(child)) continue
@@ -300,7 +308,10 @@ class HookEntry : IXposedHookLoadPackage {
     }
 
     private fun getRv(): Any? {
-        val rv = recyclerView ?: return null
+        val rv = recyclerView ?: run {
+            Log.w(TAG, "getRv: recyclerView is null")
+            return null
+        }
         val gcm = getChildCountMethod ?: return null
         val count = try { gcm.invoke(rv) as Int } catch (_: Throwable) { -1 }
         if (count > 0) return rv
@@ -311,37 +322,37 @@ class HookEntry : IXposedHookLoadPackage {
     }
 
     private fun applyBlur() {
-        val rv = getRv() ?: return
+        val rv = getRv() ?: run {
+            Log.w(TAG, "applyBlur: no RV")
+            return
+        }
         val gcm = getChildCountMethod ?: return
         val gca = getChildAtMethod ?: return
         val childCount = gcm.invoke(rv) as Int
+        val effectiveIds = synchronized(highlightedLineIds) { highlightedLineIds + previousHighlightIds }
+        Log.i(TAG, "applyBlur: childCount=$childCount hl=${synchronized(highlightedLineIds) { highlightedLineIds.toSet() }} prev=$previousHighlightIds effective=$effectiveIds")
 
-        val effectiveIds = synchronized(highlightedLineIds) {
-            highlightedLineIds + previousHighlightIds
+        if (childCount == 0) {
+            Log.w(TAG, "applyBlur: childCount=0, no children to blur")
+            return
         }
-
-        var hasBouncingBall = false
-        for (i in 0 until childCount) {
-            val child = gca.invoke(rv, i) as? View ?: continue
-            if (!isLyricsLine(child)) { hasBouncingBall = true; break }
-        }
-
-        val shouldBlur = effectiveIds.isNotEmpty() || hasBouncingBall
-        Log.d(TAG, "applyBlur: children=$childCount hl=${synchronized(highlightedLineIds) { highlightedLineIds.toSet() }} prev=$previousHighlightIds")
 
         for (i in 0 until childCount) {
             val child = gca.invoke(rv, i) as? View ?: continue
-            if (!isLyricsLine(child)) continue
+            val isLyric = isLyricsLine(child)
             val adapterPos = getAdapterPosition(child)
+            Log.d(TAG, "  [$i] class=${child.javaClass.simpleName} isLyric=$isLyric pos=$adapterPos")
+            if (!isLyric) continue
             val isHighlighted = adapterPos in effectiveIds
-            val targetBlur = if (!shouldBlur || isHighlighted) {
-                0f
-            } else if (effectiveIds.isEmpty()) {
+            val targetBlur = if (effectiveIds.isEmpty()) {
                 BLUR_MAX
+            } else if (isHighlighted) {
+                0f
             } else {
                 val minDist = effectiveIds.minOf { Math.abs(adapterPos - it) }
                 (BLUR_BASE + (minDist - 1) * BLUR_STEP).coerceAtMost(BLUR_MAX)
             }
+            Log.d(TAG, "  [$i] pos=$adapterPos hl=$isHighlighted targetBlur=$targetBlur")
             animateBlur(child, targetBlur)
         }
     }
