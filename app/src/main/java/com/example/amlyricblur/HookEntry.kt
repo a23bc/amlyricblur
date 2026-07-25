@@ -6,6 +6,7 @@ import android.graphics.Shader
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.widget.ImageView
@@ -39,6 +40,8 @@ class HookEntry : IXposedHookLoadPackage {
 
     private var recyclerView: Any? = null
     private var lyricsRootView: View? = null
+    private var isUserScrolling = false
+    private val scrollHandler by lazy { Handler(Looper.getMainLooper()) }
 
     override fun handleLoadPackage(lpparam: XC_LoadPackage.LoadPackageParam) {
         if (lpparam.packageName != PKG) return
@@ -152,6 +155,7 @@ class HookEntry : IXposedHookLoadPackage {
             if (rv != null) {
                 recyclerView = rv
                 Log.i(TAG, "RV FOUND")
+                attachScrollListener(rv)
 
             } else {
                 Handler(Looper.getMainLooper()).postDelayed({ findRecyclerView(view) }, 1000)
@@ -176,6 +180,40 @@ class HookEntry : IXposedHookLoadPackage {
         Handler(Looper.getMainLooper()).postDelayed({
             try { applyBlur() } catch (t: Throwable) { Log.e(TAG, "Blur failed", t) }
         }, 200)
+    }
+
+    private fun attachScrollListener(rv: Any) {
+        try {
+            val view = rv as View
+            view.setOnTouchListener { _, event ->
+                isUserScrolling = event.action != MotionEvent.ACTION_CANCEL
+                    && event.action != MotionEvent.ACTION_UP
+                false
+            }
+            view.viewTreeObserver.addOnScrollChangedListener { onScrollDetected() }
+            Log.i(TAG, "Scroll listener attached")
+        } catch (t: Throwable) {
+            Log.e(TAG, "Failed to attach scroll listener", t)
+        }
+    }
+
+    private fun onScrollDetected() {
+        if (isUserScrolling) clearAllBlur()
+    }
+
+    private fun clearAllBlur() {
+        val rv = getRv() ?: return
+        val gcm = getChildCountMethod ?: return
+        val gca = getChildAtMethod ?: return
+        val childCount = gcm.invoke(rv) as Int
+        for (i in 0 until childCount) {
+            val child = gca.invoke(rv, i) as? View ?: continue
+            if (!isLyricsLine(child)) continue
+            viewBlurValues[child] = 0f
+            viewAnimators[child]?.cancel()
+            setRenderEffectMethod?.invoke(child, null)
+        }
+        Log.d(TAG, "clearAllBlur: done")
     }
 
     private fun getRv(): Any? {
@@ -212,6 +250,24 @@ class HookEntry : IXposedHookLoadPackage {
         }
 
         val shouldBlur = hlIds.isNotEmpty() || hasBouncingBall
+
+        if (hlIds.isNotEmpty()) {
+            var hasVisibleHighlight = false
+            for (i in 0 until childCount) {
+                val child = gca.invoke(rv, i) as? View ?: continue
+                if (!isLyricsLine(child)) continue
+                if (getAdapterPosition(child) in hlIds) {
+                    hasVisibleHighlight = true
+                    break
+                }
+            }
+            if (!hasVisibleHighlight) {
+                clearAllBlur()
+                Log.d(TAG, "applyBlur: no highlight in viewport, cleared")
+                return
+            }
+        }
+
         Log.d(TAG, "applyBlur: children=$childCount hl=$hlIds ball=$hasBouncingBall")
 
         for (i in 0 until childCount) {
