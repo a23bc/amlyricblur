@@ -362,11 +362,47 @@ class HookEntry : IXposedHookLoadPackage {
             animateBlur(child, targetBlur)
         }
 
-        if (childCount > 0) {
-            val lastChild = gca.invoke(rv, childCount - 1) as? View
-            if (lastChild != null && !isLyricsLine(lastChild)) {
-                animateBlur(lastChild, lastLyricsBlur)
+        // Handle non-lyrics views (bouncing ball & credits) separately
+        for (idx2 in 0 until childCount) {
+            val child = gca.invoke(rv, idx2) as? View ?: continue
+            if (isLyricsLine(child)) continue
+            val type = isNonLyricsLineType(child)
+            when (type) {
+                "BOUNCING_BALL" -> {
+                    animateBlur(child, 0f)
+                }
+                "CREDITS" -> {
+                    animateBlur(child, lastLyricsBlur)
+                }
+                else -> {
+                    animateBlur(child, lastLyricsBlur)
+                }
             }
+        }
+    }
+
+    private fun getViewInfo(view: View): String {
+        val id = try {
+            if (view.id != View.NO_ID) view.resources.getResourceEntryName(view.id) else "no_id"
+        } catch (_: Throwable) { "id=${view.id}" }
+        val tag = view.tag?.toString() ?: "no_tag"
+        val className = view.javaClass.simpleName
+        return "class=$className, id=$id, tag=$tag"
+    }
+
+    private fun isNonLyricsLineType(view: View): String {
+        val id = try {
+            if (view.id != View.NO_ID) view.resources.getResourceEntryName(view.id) else "no_id"
+        } catch (_: Throwable) { "no_id" }
+        return when (id) {
+            "lyrics_instrumental_root" -> "BOUNCING_BALL"
+            "lyrics_report_concern" -> "CREDITS"
+            "no_id" -> {
+                val parent = view.parent as? ViewGroup
+                if (parent != null && parent.indexOfChild(view) == parent.childCount - 1) "CREDITS"
+                else "UNKNOWN"
+            }
+            else -> "UNKNOWN"
         }
     }
 
