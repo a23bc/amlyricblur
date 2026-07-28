@@ -333,6 +333,7 @@ class HookEntry : IXposedHookLoadPackage {
 
         val shouldBlur = hlIds.isNotEmpty() || hasBouncingBall
 
+        var lastLyricsBlur = 0f
         for (i in 0 until childCount) {
             val child = gca.invoke(rv, i) as? View ?: continue
             if (!isLyricsLine(child)) continue
@@ -353,7 +354,15 @@ class HookEntry : IXposedHookLoadPackage {
                 val base = if (isBackward) BLUR_BASE + BLUR_STEP else BLUR_BASE
                 (base + (dist - 1) * BLUR_STEP).coerceAtMost(BLUR_MAX)
             }
+            lastLyricsBlur = targetBlur
             animateBlur(child, targetBlur)
+        }
+
+        if (childCount > 0) {
+            val lastChild = gca.invoke(rv, childCount - 1) as? View
+            if (lastChild != null && !isLyricsLine(lastChild)) {
+                animateBlur(lastChild, lastLyricsBlur)
+            }
         }
     }
 
