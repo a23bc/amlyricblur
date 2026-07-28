@@ -115,7 +115,6 @@ class HookEntry : IXposedHookLoadPackage {
                 } catch (_: Throwable) {}
             }
             dexFile.close()
-            Log.w(TAG, "No LyricsLineVector method found")
         } catch (t: Throwable) {
             Log.e(TAG, "DexFile scan failed", t)
         }
@@ -184,9 +183,11 @@ class HookEntry : IXposedHookLoadPackage {
             )
             Log.i(TAG, "Found VM")
 
+            var wordHookCount = 0
             for (m in vmClass.declaredMethods) {
                 val p = m.parameterTypes
                 if (p.size == 4 && p[0] == Int::class.javaPrimitiveType && p[3] == Boolean::class.javaPrimitiveType) {
+                    wordHookCount++
                     XposedBridge.hookMethod(m, object : XC_MethodHook() {
                         override fun beforeHookedMethod(param: MethodHookParam) {
                             val lineId = param.args[0] as Int
@@ -202,9 +203,11 @@ class HookEntry : IXposedHookLoadPackage {
                 }
             }
 
+            var lineHookCount = 0
             for (m in vmClass.declaredMethods) {
                 val p = m.parameterTypes
                 if (p.size == 1 && p[0] == Int::class.javaPrimitiveType && m.returnType == Void.TYPE) {
+                    lineHookCount++
                     XposedBridge.hookMethod(m, object : XC_MethodHook() {
                         override fun beforeHookedMethod(param: MethodHookParam) {
                             val lineId = param.args[0] as Int
@@ -215,12 +218,13 @@ class HookEntry : IXposedHookLoadPackage {
                                     highlightedLineIds.clear()
                                     highlightedLineIds.add(lineId)
                                 }
-                                scheduleBlurUpdate()
                             }
+                            scheduleBlurUpdate()
                         }
                     })
                 }
             }
+            hookHighlightCallback(cl)
         } catch (t: Throwable) {
             Log.w(TAG, "VM hook failed: ${t.message}")
         }
@@ -312,14 +316,14 @@ class HookEntry : IXposedHookLoadPackage {
         val gcm = getChildCountMethod ?: return
         val gca = getChildAtMethod ?: return
         val childCount = gcm.invoke(rv) as Int
-        val hlIds = synchronized(highlightedLineIds) { highlightedLineIds.toSet() }
+        val effectiveIds = synchronized(highlightedLineIds) { highlightedLineIds + previousHighlightIds }
 
         if (userScrolled) {
             var hasHighlightedVisible = false
             for (i in 0 until childCount) {
                 val child = gca.invoke(rv, i) as? View ?: continue
                 if (!isLyricsLine(child)) continue
-                if (getAdapterPosition(child) in hlIds) { hasHighlightedVisible = true; break }
+                if (getAdapterPosition(child) in effectiveIds) { hasHighlightedVisible = true; break }
             }
             if (!hasHighlightedVisible) return
             userScrolled = false
@@ -331,21 +335,21 @@ class HookEntry : IXposedHookLoadPackage {
             if (!isLyricsLine(child)) { hasBouncingBall = true; break }
         }
 
-        val shouldBlur = hlIds.isNotEmpty() || hasBouncingBall
+        val shouldBlur = effectiveIds.isNotEmpty() || hasBouncingBall
 
         var lastLyricsBlur = 0f
         for (i in 0 until childCount) {
             val child = gca.invoke(rv, i) as? View ?: continue
             if (!isLyricsLine(child)) continue
             val adapterPos = getAdapterPosition(child)
-            val isHighlighted = adapterPos in hlIds
+            val isHighlighted = adapterPos in effectiveIds
             val targetBlur = if (!shouldBlur || isHighlighted) {
                 0f
-            } else if (hlIds.isEmpty()) {
+            } else if (effectiveIds.isEmpty()) {
                 BLUR_MAX
             } else {
-                val minHL = hlIds.min()
-                val maxHL = hlIds.max()
+                val minHL = effectiveIds.min()
+                val maxHL = effectiveIds.max()
                 val (dist, isBackward) = when {
                     adapterPos < minHL -> Pair(minHL - adapterPos, true)
                     adapterPos > maxHL -> Pair(adapterPos - maxHL, false)
