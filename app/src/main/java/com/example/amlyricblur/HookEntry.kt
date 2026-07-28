@@ -312,31 +312,46 @@ class HookEntry : IXposedHookLoadPackage {
         val gcm = getChildCountMethod ?: return
         val gca = getChildAtMethod ?: return
         val childCount = gcm.invoke(rv) as Int
-        val effectiveIds = synchronized(highlightedLineIds) { highlightedLineIds + previousHighlightIds }
+        val hlIds = synchronized(highlightedLineIds) { highlightedLineIds.toSet() }
 
         if (userScrolled) {
             var hasHighlightedVisible = false
             for (i in 0 until childCount) {
                 val child = gca.invoke(rv, i) as? View ?: continue
                 if (!isLyricsLine(child)) continue
-                if (getAdapterPosition(child) in effectiveIds) { hasHighlightedVisible = true; break }
+                if (getAdapterPosition(child) in hlIds) { hasHighlightedVisible = true; break }
             }
             if (!hasHighlightedVisible) return
             userScrolled = false
         }
 
+        var hasBouncingBall = false
+        for (i in 0 until childCount) {
+            val child = gca.invoke(rv, i) as? View ?: continue
+            if (!isLyricsLine(child)) { hasBouncingBall = true; break }
+        }
+
+        val shouldBlur = hlIds.isNotEmpty() || hasBouncingBall
+
         for (i in 0 until childCount) {
             val child = gca.invoke(rv, i) as? View ?: continue
             if (!isLyricsLine(child)) continue
             val adapterPos = getAdapterPosition(child)
-            val isHighlighted = adapterPos in effectiveIds
-            val targetBlur = if (effectiveIds.isEmpty()) {
-                BLUR_MAX
-            } else if (isHighlighted) {
+            val isHighlighted = adapterPos in hlIds
+            val targetBlur = if (!shouldBlur || isHighlighted) {
                 0f
+            } else if (hlIds.isEmpty()) {
+                BLUR_MAX
             } else {
-                val minDist = effectiveIds.minOf { Math.abs(adapterPos - it) }
-                (BLUR_BASE + (minDist - 1) * BLUR_STEP).coerceAtMost(BLUR_MAX)
+                val minHL = hlIds.min()
+                val maxHL = hlIds.max()
+                val (dist, isBackward) = when {
+                    adapterPos < minHL -> Pair(minHL - adapterPos, true)
+                    adapterPos > maxHL -> Pair(adapterPos - maxHL, false)
+                    else -> Pair(0, false)
+                }
+                val base = if (isBackward) BLUR_BASE + BLUR_STEP else BLUR_BASE
+                (base + (dist - 1) * BLUR_STEP).coerceAtMost(BLUR_MAX)
             }
             animateBlur(child, targetBlur)
         }
