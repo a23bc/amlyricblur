@@ -338,6 +338,7 @@ class HookEntry : IXposedHookLoadPackage {
         val shouldBlur = effectiveIds.isNotEmpty() || hasBouncingBall
 
         var lastLyricsBlur = 0f
+        var lyricsLineIndex = 0
         for (i in 0 until childCount) {
             val child = gca.invoke(rv, i) as? View ?: continue
             if (!isLyricsLine(child)) continue
@@ -346,7 +347,9 @@ class HookEntry : IXposedHookLoadPackage {
             val targetBlur = if (!shouldBlur || isHighlighted) {
                 0f
             } else if (effectiveIds.isEmpty()) {
-                BLUR_MAX
+                // Bouncing ball phase: graduated blur from first line
+                val base = BLUR_BASE
+                (base + lyricsLineIndex * BLUR_STEP).coerceAtMost(BLUR_MAX)
             } else {
                 val minHL = effectiveIds.min()
                 val maxHL = effectiveIds.max()
@@ -359,6 +362,7 @@ class HookEntry : IXposedHookLoadPackage {
                 (base + (dist - 1) * BLUR_STEP).coerceAtMost(BLUR_MAX)
             }
             lastLyricsBlur = targetBlur
+            lyricsLineIndex++
             animateBlur(child, targetBlur)
         }
 
