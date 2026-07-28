@@ -43,6 +43,7 @@ class HookEntry : IXposedHookLoadPackage {
     private var recyclerView: Any? = null
     private var lyricsRootView: View? = null
     private var isUserScrolling = false
+    private var userScrolled = false
     private var highlightHookInstalled = false
     private var pendingBlurRunnable: Runnable? = null
     private val scrollHandler by lazy { Handler(Looper.getMainLooper()) }
@@ -281,6 +282,7 @@ class HookEntry : IXposedHookLoadPackage {
     }
 
     private fun clearAllBlur() {
+        userScrolled = true
         val rv = getRv() ?: return
         val gcm = getChildCountMethod ?: return
         val gca = getChildAtMethod ?: return
@@ -311,6 +313,17 @@ class HookEntry : IXposedHookLoadPackage {
         val gca = getChildAtMethod ?: return
         val childCount = gcm.invoke(rv) as Int
         val effectiveIds = synchronized(highlightedLineIds) { highlightedLineIds + previousHighlightIds }
+
+        if (userScrolled) {
+            var hasHighlightedVisible = false
+            for (i in 0 until childCount) {
+                val child = gca.invoke(rv, i) as? View ?: continue
+                if (!isLyricsLine(child)) continue
+                if (getAdapterPosition(child) in effectiveIds) { hasHighlightedVisible = true; break }
+            }
+            if (!hasHighlightedVisible) return
+            userScrolled = false
+        }
 
         for (i in 0 until childCount) {
             val child = gca.invoke(rv, i) as? View ?: continue
