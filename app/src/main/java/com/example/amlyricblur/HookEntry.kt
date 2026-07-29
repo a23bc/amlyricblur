@@ -211,7 +211,14 @@ class HookEntry : IXposedHookLoadPackage {
                     XposedBridge.hookMethod(m, object : XC_MethodHook() {
                         override fun beforeHookedMethod(param: MethodHookParam) {
                             val lineId = param.args[0] as Int
-                            if (lineId < 0) return
+                            if (lineId < 0) {
+                                // Song change: reset stale state from previous song
+                                synchronized(highlightedLineIds) {
+                                    previousHighlightIds = emptySet()
+                                    highlightedLineIds.clear()
+                                }
+                                return
+                            }
                             if (!highlightHookInstalled) {
                                 synchronized(highlightedLineIds) {
                                     previousHighlightIds = highlightedLineIds.toSet()
@@ -346,8 +353,8 @@ class HookEntry : IXposedHookLoadPackage {
             val isHighlighted = adapterPos in effectiveIds
             val targetBlur = if (!shouldBlur || isHighlighted) {
                 0f
-            } else if (effectiveIds.isEmpty()) {
-                // Bouncing ball phase: graduated blur from first line
+            } else if (hasBouncingBall && effectiveIds.none { it != 0 }) {
+                // Bouncing ball phase (no real highlights yet): graduated blur
                 val base = BLUR_BASE
                 (base + lyricsLineIndex * BLUR_STEP).coerceAtMost(BLUR_MAX)
             } else {
