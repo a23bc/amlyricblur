@@ -294,6 +294,8 @@ class HookEntry : IXposedHookLoadPackage {
 
     private fun clearAllBlur() {
         userScrolled = true
+        // Delay reapply so fling momentum can finish
+        pendingBlurRunnable?.let { scrollHandler.removeCallbacks(it) }
         val rv = getRv() ?: return
         val gcm = getChildCountMethod ?: return
         val gca = getChildAtMethod ?: return
@@ -305,6 +307,7 @@ class HookEntry : IXposedHookLoadPackage {
             viewAnimators[child]?.cancel()
             setRenderEffectMethod?.invoke(child, null)
         }
+        scrollHandler.postDelayed({ scheduleBlurUpdate() }, 150)
     }
 
     private fun getRv(): Any? {
